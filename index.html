@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>果蔬分拣 — Three.js 玩法还原</title>
+  <style>
+    /* Bundled locally so the game needs no network at all. */
+    @font-face {
+      font-family: "Nunito";
+      font-style: normal;
+      font-weight: 700 900;
+      font-display: swap;
+      src: url("./vendor/fonts/nunito-latin.woff2") format("woff2");
+    }
+  </style>
+  <style>
+    :root {
+      --road: #4a4f55;
+      --panel: #1c6fd6;
+      --panel-dark: #0f4fa8;
+      --ink: #10243f;
+      --good: #3ecf6a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: #183f2d;
+      font-family: "Nunito", system-ui, sans-serif;
+      color: #fff;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+    #app {
+      position: relative; width: 100%; height: 100%;
+      max-width: 620px; margin: 0 auto;
+      overflow: hidden;
+      background: #394653;
+      box-shadow: 0 0 48px rgba(0,0,0,.45);
+    }
+    canvas { display: block; width: 100%; height: 100%; }
+    #hud {
+      position: absolute; inset: 0; pointer-events: none;
+      display: flex; flex-direction: column; justify-content: space-between;
+      padding: max(26px, env(safe-area-inset-top)) 22px max(28px, env(safe-area-inset-bottom));
+    }
+    .top-row, .bottom-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .top-row { justify-content: space-between; }
+    .level-nav {
+      pointer-events: auto;
+      display: flex; align-items: center; gap: 4px;
+      background: rgba(19, 45, 67, .82);
+      border: 2px solid rgba(255, 255, 255, .16);
+      border-radius: 16px;
+      padding: 4px 8px;
+      font-weight: 800;
+      font-size: 13px;
+    }
+    .level-nav button {
+      border: 0; background: transparent; color: #7ec4ff;
+      font: inherit; font-size: 20px; line-height: 1;
+      padding: 0 5px; cursor: pointer;
+    }
+    .level-nav button:active { color: #fff; }
+    .level-nav input {
+      width: 42px; text-align: center;
+      background: rgba(0, 0, 0, .28);
+      border: 1px solid rgba(255, 255, 255, .18);
+      border-radius: 9px;
+      color: #fff; font: inherit; padding: 3px 0;
+      -moz-appearance: textfield;
+    }
+    .level-nav input::-webkit-outer-spin-button,
+    .level-nav input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .level-nav span { color: rgba(255, 255, 255, .5); font-size: 11px; }
+    .pill, .btn {
+      pointer-events: auto;
+      border: 0;
+      border-radius: 18px;
+      background: linear-gradient(180deg, #39a9ff 0%, #0874dd 58%, #064ca9 100%);
+      border: 4px solid #f2e5cb;
+      outline: 3px solid #174f80;
+      box-shadow: inset 0 2px 3px rgba(255,255,255,.75), 0 5px 0 #083b77, 0 9px 18px rgba(0,0,0,.28);
+      color: #fff;
+      font: 800 15px/1 "Nunito", sans-serif;
+      cursor: pointer;
+    }
+    .pill {
+      min-width: 52px; height: 52px;
+      display: grid; place-items: center;
+      font-size: 25px;
+    }
+    .level-tag { display: none; }
+    .hint {
+      position: absolute; left: 50%; top: 30%; transform: translateX(-50%);
+      max-width: min(92vw, 420px);
+      text-align: center;
+      background: rgba(19,45,67,.82);
+      padding: 10px 16px;
+      border: 2px solid rgba(255,255,255,.16);
+      border-radius: 18px;
+      font-weight: 800;
+      font-size: 14px;
+      line-height: 1.35;
+      pointer-events: none;
+      transition: opacity .25s ease;
+    }
+    .hint b { color: #7ec4ff; }
+    .toast {
+      position: absolute; left: 50%; bottom: 40%; transform: translate(-50%, 8px);
+      max-width: min(88vw, 380px);
+      text-align: center;
+      background: rgba(120, 26, 26, .92);
+      padding: 9px 18px;
+      border: 2px solid rgba(255, 190, 190, .3);
+      border-radius: 16px;
+      font-weight: 800;
+      font-size: 13.5px;
+      line-height: 1.35;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .18s ease, transform .18s ease;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .boosters {
+      display: flex; gap: 18px; margin: 0 auto;
+      pointer-events: auto;
+    }
+    .booster {
+      width: 67px; height: 67px;
+      border-radius: 50%;
+      border: 0;
+      background: radial-gradient(circle at 38% 25%, #58c5ff 0%, #198ae6 45%, #0754a8 100%);
+      border: 5px solid #eadfc9;
+      outline: 3px solid #164e7b;
+      box-shadow: inset 0 2px 4px rgba(255,255,255,.78), 0 6px 0 #093e79, 0 11px 20px rgba(0,0,0,.3);
+      color: #fff;
+      font: 900 28px/1 "Nunito", sans-serif;
+      cursor: pointer;
+      position: relative;
+    }
+    .booster:disabled { filter: grayscale(.4) brightness(.75); cursor: default; }
+    .booster .count {
+      position: absolute; right: -7px; top: -7px;
+      min-width: 22px; height: 22px; padding: 0 5px;
+      border-radius: 999px;
+      background: #ff4d4f;
+      font: 900 12px/22px "Nunito", sans-serif;
+      text-align: center;
+    }
+    #overlay {
+      position: absolute; inset: 0;
+      display: none; place-items: center;
+      background: rgba(8,18,28,.55);
+      backdrop-filter: blur(4px);
+      pointer-events: auto;
+    }
+    #overlay.show { display: grid; }
+    .card {
+      width: min(88vw, 340px);
+      background: linear-gradient(180deg, #fff8e8, #f3e2c0);
+      color: var(--ink);
+      border-radius: 22px;
+      padding: 22px 20px 18px;
+      text-align: center;
+      box-shadow: 0 18px 40px rgba(0,0,0,.35);
+    }
+    .card h2 { font-size: 28px; margin-bottom: 8px; }
+    .card p { font-weight: 700; opacity: .8; margin-bottom: 16px; }
+    .card .actions { display: flex; gap: 10px; justify-content: center; }
+    .card button {
+      pointer-events: auto;
+      min-width: 120px; height: 48px;
+      border: 0; border-radius: 999px;
+      background: linear-gradient(180deg, #52d878, #1f9d49);
+      box-shadow: 0 6px 0 #0f6b30;
+      color: #fff;
+      font: 900 16px/1 "Nunito", sans-serif;
+      cursor: pointer;
+    }
+    .bottom-row { justify-content: center; width: 100%; }
+    @media (max-height: 700px) {
+      .booster { width: 58px; height: 58px; }
+      .boosters { gap: 14px; }
+      .hint { top: 28%; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="hud">
+      <div class="top-row">
+        <div class="level-nav">
+          <button id="btnPrev" title="上一关">‹</button>
+          <input id="levelInput" type="number" min="1" max="200" value="1" title="跳到第几关" />
+          <span id="levelTotal">/ 200</span>
+          <button id="btnFwd" title="下一关">›</button>
+        </div>
+        <button class="pill" id="btnReset" title="重开关卡">⚙</button>
+      </div>
+      <div class="level-tag" id="levelTag">Level 1</div>
+      <div class="hint" id="hint"></div>
+      <div class="toast" id="toast"></div>
+      <div class="bottom-row">
+        <div class="boosters">
+          <button class="booster" id="btnUndo" title="Undo">↶<span class="count" id="undoCount">∞</span></button>
+          <button class="booster" id="btnShuffle" title="Shuffle">⤨<span class="count" id="shuffleCount">3</span></button>
+          <button class="booster" id="btnAdd" title="加一辆空购物车">▣<span class="count" id="addCount">2</span></button>
+        </div>
+      </div>
+    </div>
+    <div id="overlay">
+      <div class="card">
+        <h2 id="overlayTitle">Level Clear!</h2>
+        <p id="overlayDesc">所有购物车都推走了</p>
+        <div class="actions">
+          <button id="btnNext">下一关</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.js"
+      }
+    }
+  </script>
+  <script type="module" src="./game.js"></script>
+</body>
+</html>
